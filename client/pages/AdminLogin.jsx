@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 
 const AdminLogin = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const navigate = useNavigate();
+    const { addToast } = useToast();
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -19,12 +23,15 @@ const AdminLogin = () => {
             if (res.ok) {
                 localStorage.setItem('adminToken', data.token);
                 localStorage.setItem('adminUser', data.username);
-                navigate('/admin/dashboard');
+                addToast(`Welcome back, ${data.username}!`, "success");
+                navigate('/admin');
             } else {
                 setError(data);
+                addToast(data || "Login failed", "error");
             }
         } catch (err) {
             setError("Login failed");
+            addToast("Network error or server down", "error");
         }
     };
 
@@ -45,12 +52,21 @@ const AdminLogin = () => {
                     </div>
                     <div className="mb-6">
                         <label className="block mb-2 text-sm font-bold text-gray-700 dark:text-gray-300">Password</label>
-                        <input
-                            type="password"
-                            className="w-full px-3 py-2 border rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                        />
+                        <div className="relative">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                className="w-full px-3 py-2 border rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-700 dark:border-gray-600 dark:text-white pr-10"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                onClick={() => setShowPassword(!showPassword)}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </div>
                     <button
                         type="submit"
@@ -59,6 +75,24 @@ const AdminLogin = () => {
                         Login
                     </button>
                 </form>
+
+                <div className="mt-6 text-center">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Don't have an account?{' '}
+                        <button
+                            onClick={() => navigate('/admin/register')}
+                            className="text-blue-600 hover:underline dark:text-blue-400 font-medium"
+                        >
+                            Register Here
+                        </button>
+                    </p>
+                    <button
+                        onClick={() => navigate('/')}
+                        className="mt-4 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                        &larr; Back to Site
+                    </button>
+                </div>
             </div>
         </div>
     );

@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ReactQuill from 'react-quill-new';
-import 'react-quill-new/dist/quill.snow.css';
+import CustomEditor from '../components/CustomEditor';
+import CustomDropdown from '../components/CustomDropdown';
+import CustomFileInput from '../components/CustomFileInput';
+import { useToast } from '../contexts/ToastContext';
+import { PlusCircle, Trash2, Mail, User, Phone, Globe, Hash, List, FileUp, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 
 const AdminDashboard = () => {
     const [notices, setNotices] = useState([]);
@@ -10,8 +13,7 @@ const AdminDashboard = () => {
 
     // Create Notice State
     const [newNotice, setNewNotice] = useState({
-        title: '',
-        content: '', // Short description for the card
+        noticeContent: { title: '', shortDescription: '', content: '' }, // Segmented editor content
         formTitle: '', // Title for the form modal
         formDescription: '', // Detailed description for the form
         noticeBgImage: '',
@@ -34,6 +36,7 @@ const AdminDashboard = () => {
 
     const navigate = useNavigate();
     const token = localStorage.getItem('adminToken');
+    const { addToast } = useToast();
 
     useEffect(() => {
         if (!token) {
@@ -93,54 +96,23 @@ const AdminDashboard = () => {
         }
     };
 
-    // Import Word for FORM Description
-    const handleWordImportForm = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            const res = await fetch('/api/admin/parse-word', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            const data = await res.json();
-            const plainText = data.content.replace(/<[^>]+>/g, '\n');
-            setNewNotice({ ...newNotice, formDescription: plainText });
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    // Import Word for NOTICE Short Content
-    const handleWordImportNotice = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            const res = await fetch('/api/admin/parse-word', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            const data = await res.json();
-            const plainText = data.content.replace(/<[^>]+>/g, '\n');
-            setNewNotice({ ...newNotice, content: plainText });
-        } catch (err) {
-            console.error(err);
-        }
-    };
 
     const handleCreateNotice = async (e) => {
         e.preventDefault();
         try {
-            const payload = { ...newNotice, formFields };
+            // Extract segmented content
+            const { title, shortDescription, content } = newNotice.noticeContent;
+
+            const payload = {
+                ...newNotice,
+                title,
+                shortDescription,
+                content,
+                formFields
+            };
+            // Remove noticeContent from payload as it's not in the schema
+            delete payload.noticeContent;
+
             const res = await fetch('/api/admin/notices', {
                 method: 'POST',
                 headers: {
@@ -151,8 +123,7 @@ const AdminDashboard = () => {
             });
             if (res.ok) {
                 setNewNotice({
-                    title: '',
-                    content: '',
+                    noticeContent: { title: '', shortDescription: '', content: '' },
                     formTitle: '',
                     formDescription: '',
                     noticeBgImage: '',
@@ -170,9 +141,13 @@ const AdminDashboard = () => {
                 });
                 setFormFields([]);
                 fetchNotices();
+                addToast("Notice created successfully!", "success");
+            } else {
+                addToast("Failed to create notice", "error");
             }
         } catch (err) {
             console.error(err);
+            addToast("An error occurred while creating notice", "error");
         }
     };
 
@@ -229,9 +204,15 @@ const AdminDashboard = () => {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.ok) fetchNotices();
+            if (res.ok) {
+                fetchNotices();
+                addToast("Notice deleted", "success");
+            } else {
+                addToast("Failed to delete notice", "error");
+            }
         } catch (err) {
             console.error(err);
+            addToast("Error deleting notice", "error");
         }
     };
 
@@ -248,9 +229,13 @@ const AdminDashboard = () => {
 
             if (res.ok) {
                 fetchNotices();
+                addToast(`Registration status: ${notice.acceptingResponses === false ? 'Open' : 'Closed'}`, "info");
+            } else {
+                addToast("Failed to toggle status", "error");
             }
         } catch (err) {
             console.error(err);
+            addToast("Error toggling status", "error");
         }
     };
 
@@ -290,7 +275,7 @@ const AdminDashboard = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-8">
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-8 pt-24">
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-3xl font-bold">Admin Dashboard</h1>
                 <button onClick={logout} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">Logout</button>
@@ -317,45 +302,27 @@ const AdminDashboard = () => {
                         {/* SECTION 1: Notice Card */}
                         <div className="mb-8 p-6 bg-white dark:bg-gray-800 rounded shadow border-l-4 border-blue-500">
                             <h2 className="text-xl font-bold mb-4">Step 1: Public Notice Card</h2>
-                            <p className="text-sm text-gray-500 mb-4">This is what appears on the Home Page.</p>
+                            <p className="text-sm text-gray-500 mb-4">Create your notice content using the segmented editor below.</p>
 
-                            <div className="mb-4">
-                                <label className="block text-sm font-bold mb-1">Event Title</label>
-                                <ReactQuill
-                                    theme="snow"
-                                    value={newNotice.title}
-                                    onChange={value => setNewNotice({ ...newNotice, title: value })}
-                                    className="bg-white dark:bg-gray-700 dark:text-white"
+                            {/* Segmented CustomEditor */}
+                            <CustomEditor
+                                segmented={true}
+                                value={newNotice.noticeContent}
+                                onChange={(value) => setNewNotice({ ...newNotice, noticeContent: value })}
+                            />
+
+                            {/* Card Background and Word Import - Side by Side */}
+                            <div className="mt-4">
+                                <CustomFileInput
+                                    label="Card Background Image"
+                                    accept="image/*"
+                                    onChange={async (e) => {
+                                        const path = await handleFileUpload(e.target.files[0]);
+                                        if (path) setNewNotice({ ...newNotice, noticeBgImage: path });
+                                    }}
+                                    isUploaded={!!newNotice.noticeBgImage}
+                                    previewUrl={newNotice.noticeBgImage}
                                 />
-                            </div>
-
-                            <div className="flex gap-4 items-start mb-4">
-                                <div className="w-full">
-                                    <label className="block text-sm font-bold mb-1">Short Description</label>
-                                    <ReactQuill
-                                        theme="snow"
-                                        value={newNotice.content}
-                                        onChange={value => setNewNotice({ ...newNotice, content: value })}
-                                        className="bg-white dark:bg-gray-700 dark:text-white"
-                                    />
-                                </div>
-                                <div className="w-1/3 bg-blue-50 dark:bg-gray-700 p-3 rounded">
-                                    <p className="text-xs font-bold mb-1">Import Word to Card</p>
-                                    <input type="file" accept=".docx" onChange={handleWordImportNotice} className="block w-full text-xs text-gray-500
-                                        file:mr-2 file:py-1 file:px-2
-                                        file:rounded-full file:border-0
-                                        file:text-xs file:font-semibold
-                                        file:bg-blue-100 file:text-blue-700" />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold mb-1">Card Background Image</label>
-                                <input type="file" accept="image/*" onChange={async (e) => {
-                                    const path = await handleFileUpload(e.target.files[0]);
-                                    if (path) setNewNotice({ ...newNotice, noticeBgImage: path });
-                                }} />
-                                {newNotice.noticeBgImage && <p className="text-xs text-green-600">Uploaded</p>}
                             </div>
                         </div>
 
@@ -364,45 +331,37 @@ const AdminDashboard = () => {
                             <h2 className="text-xl font-bold mb-4">Step 2: Registration Form</h2>
                             <p className="text-sm text-gray-500 mb-4">This opens when users click 'Register'.</p>
 
-                            <div className="mb-4">
-                                <label className="block text-sm font-bold mb-1">Form Title (Leave empty to use Event Title)</label>
-                                <ReactQuill
-                                    theme="snow"
+                            <div className="mb-6">
+                                <CustomEditor
                                     value={newNotice.formTitle}
                                     onChange={value => setNewNotice({ ...newNotice, formTitle: value })}
-                                    className="bg-white dark:bg-gray-700 dark:text-white"
+                                    placeholder="Enter form title (Leave empty to use Event Title)..."
+                                    minHeight="60px"
+                                    sectionTitle="Form Title"
+                                    sectionColor="from-blue-50 text-blue-800"
                                 />
                             </div>
 
-                            <div className="mb-4">
-                                <label className="block font-bold mb-1">Form Instructions / Description</label>
-                                <div className="flex gap-4 items-start mb-2">
-                                    <div className="w-full">
-                                        <ReactQuill
-                                            theme="snow"
-                                            value={newNotice.formDescription || ''}
-                                            onChange={value => setNewNotice({ ...newNotice, formDescription: value })}
-                                            className="bg-white dark:bg-gray-700 dark:text-white"
-                                        />
-                                    </div>
-                                    <div className="w-1/3 bg-purple-50 dark:bg-gray-700 p-3 rounded">
-                                        <p className="text-xs font-bold mb-1">Import Word to Form</p>
-                                        <input type="file" accept=".docx" onChange={handleWordImportForm} className="block w-full text-xs text-gray-500
-                                            file:mr-2 file:py-1 file:px-2
-                                            file:rounded-full file:border-0
-                                            file:text-xs file:font-semibold
-                                            file:bg-purple-100 file:text-purple-700" />
-                                    </div>
-                                </div>
+                            <div className="mb-6">
+                                <CustomEditor
+                                    value={newNotice.formDescription}
+                                    onChange={value => setNewNotice({ ...newNotice, formDescription: value })}
+                                    sectionTitle="Form Instructions / Description"
+                                    sectionColor="from-purple-50 text-purple-800"
+                                />
                             </div>
 
-                            <div className="mb-6">
-                                <label className="block text-sm font-bold mb-1">Form Header Background Image</label>
-                                <input type="file" accept="image/*" onChange={async (e) => {
-                                    const path = await handleFileUpload(e.target.files[0]);
-                                    if (path) setNewNotice({ ...newNotice, formBgImage: path });
-                                }} />
-                                {newNotice.formBgImage && <p className="text-xs text-green-600">Uploaded</p>}
+                            <div className="mb-6 mt-6">
+                                <CustomFileInput
+                                    label="Form Header Background Image"
+                                    accept="image/*"
+                                    onChange={async (e) => {
+                                        const path = await handleFileUpload(e.target.files[0]);
+                                        if (path) setNewNotice({ ...newNotice, formBgImage: path });
+                                    }}
+                                    isUploaded={!!newNotice.formBgImage}
+                                    previewUrl={newNotice.formBgImage}
+                                />
                             </div>
 
                             <div className="mb-6 p-4 border rounded bg-purple-50 dark:bg-gray-700 border-purple-200">
@@ -417,97 +376,138 @@ const AdminDashboard = () => {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold mb-1">Font Family</label>
-                                        <select className="w-full p-1 border rounded text-sm"
+                                        <CustomDropdown
+                                            options={[
+                                                { label: 'Roboto (Default)', value: 'Roboto' },
+                                                { label: 'Poppins', value: 'Poppins' },
+                                                { label: 'Arial', value: 'Arial' },
+                                                { label: 'Times New Roman', value: 'Times New Roman' },
+                                                { label: 'Georgia', value: 'Georgia' },
+                                                { label: 'Courier New', value: 'Courier New' }
+                                            ]}
                                             value={newNotice.design.fontFamily}
-                                            onChange={e => setNewNotice({ ...newNotice, design: { ...newNotice.design, fontFamily: e.target.value } })}
-                                        >
-                                            <option value="Roboto">Roboto (Default)</option>
-                                            <option value="Poppins">Poppins</option>
-                                            <option value="Arial">Arial</option>
-                                            <option value="Times New Roman">Times New Roman</option>
-                                            <option value="Georgia">Georgia</option>
-                                            <option value="Courier New">Courier New</option>
-                                        </select>
+                                            onChange={val => setNewNotice({ ...newNotice, design: { ...newNotice.design, fontFamily: val } })}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold mb-1">Title Size</label>
-                                        <select className="w-full p-1 border rounded text-sm"
+                                        <CustomDropdown
+                                            options={[
+                                                { label: 'Small (18pt)', value: '18' },
+                                                { label: 'Medium (24pt)', value: '24' },
+                                                { label: 'Large (32pt)', value: '32' },
+                                                { label: 'Huge (40pt)', value: '40' }
+                                            ]}
                                             value={newNotice.design.titleFontSize}
-                                            onChange={e => setNewNotice({ ...newNotice, design: { ...newNotice.design, titleFontSize: e.target.value } })}
-                                        >
-                                            <option value="18">Small (18pt)</option>
-                                            <option value="24">Medium (24pt)</option>
-                                            <option value="32">Large (32pt)</option>
-                                            <option value="40">Huge (40pt)</option>
-                                        </select>
+                                            onChange={val => setNewNotice({ ...newNotice, design: { ...newNotice.design, titleFontSize: val } })}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold mb-1">Body Text Size</label>
-                                        <select className="w-full p-1 border rounded text-sm"
+                                        <CustomDropdown
+                                            options={[
+                                                { label: 'Small (9pt)', value: '9' },
+                                                { label: 'Medium (11pt)', value: '11' },
+                                                { label: 'Large (14pt)', value: '14' }
+                                            ]}
                                             value={newNotice.design.bodyFontSize}
-                                            onChange={e => setNewNotice({ ...newNotice, design: { ...newNotice.design, bodyFontSize: e.target.value } })}
-                                        >
-                                            <option value="9">Small (9pt)</option>
-                                            <option value="11">Medium (11pt)</option>
-                                            <option value="14">Large (14pt)</option>
-                                        </select>
+                                            onChange={val => setNewNotice({ ...newNotice, design: { ...newNotice.design, bodyFontSize: val } })}
+                                        />
                                     </div>
-
                                 </div>
                             </div>
 
-                            <div className="mb-4">
-                                <label className="block font-bold mb-2">Registration Form Fields:</label>
+                            <div className="mb-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <label className="block font-bold text-gray-700 dark:text-gray-300">Registration Form Fields</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormFields([...formFields, { label: 'Full Name', type: 'text', required: true }])}
+                                            className="text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-2 py-1 rounded flex items-center gap-1"
+                                        >
+                                            <User size={12} /> + Name
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormFields([...formFields, { label: 'Email Address', type: 'email', required: true }])}
+                                            className="text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-2 py-1 rounded flex items-center gap-1"
+                                        >
+                                            <Mail size={12} /> + Email
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormFields([...formFields, { label: 'Phone Number', type: 'number', required: true }])}
+                                            className="text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-2 py-1 rounded flex items-center gap-1"
+                                        >
+                                            <Phone size={12} /> + Phone
+                                        </button>
+                                    </div>
+                                </div>
+
                                 {formFields.map((field, index) => (
-                                    <div key={index} className="mb-4 bg-gray-50 dark:bg-gray-900 p-3 rounded border dark:border-gray-600 shadow-sm relative pl-6 border-l-4" style={{ borderLeftColor: newNotice.design.headerColor }}>
-                                        <div className="mb-2">
-                                            <ReactQuill
-                                                theme="snow"
+                                    <div key={index} className="mb-6 bg-white dark:bg-gray-800 p-5 rounded-[15px] border border-gray-200 dark:border-gray-700 shadow-sm relative transition-all hover:shadow-md group">
+                                        <div className="absolute -left-1 top-6 bottom-6 w-1 rounded-full" style={{ backgroundColor: newNotice.design.headerColor }}></div>
+
+                                        <div className="flex justify-between items-start gap-4 mb-4">
+                                            <CustomEditor
+                                                className="flex-1"
                                                 value={field.label}
-                                                onChange={(value) => updateFormField(index, 'label', value)}
-                                                className="bg-white dark:bg-gray-700 dark:text-white"
-                                                modules={{
-                                                    toolbar: [
-                                                        [{ 'header': [1, 2, 3, false] }],
-                                                        ['bold', 'italic', 'underline'],
-                                                        ['link']
-                                                    ]
-                                                }}
+                                                onChange={(val) => updateFormField(index, 'label', val)}
+                                                placeholder="Enter question or field label..."
+                                                minHeight="60px"
+                                                sectionTitle="Question"
+                                                sectionNumber={index + 1}
+                                                sectionColor="from-green-50 text-green-800"
                                             />
-                                        </div>
-                                        <div className="flex gap-2 items-center mb-2">
-                                            <select
-                                                className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-                                                value={field.type}
-                                                onChange={e => updateFormField(index, 'type', e.target.value)}
+                                            <button
+                                                type="button"
+                                                onClick={() => removeFormField(index)}
+                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
                                             >
-                                                <option value="text">Short Answer</option>
-                                                <option value="number">Number</option>
-                                                <option value="email">Email</option>
-                                                <option value="url">Link</option>
-                                                <option value="dropdown">Dropdown</option>
-                                                <option value="radio">Multiple Choice (Radio)</option>
-                                                <option value="file">File Upload</option>
-                                            </select>
-                                            <label className="flex items-center gap-1 text-sm font-bold ml-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={field.required}
-                                                    onChange={e => updateFormField(index, 'required', e.target.checked)}
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-4 items-center">
+                                            <div className="w-full md:w-64">
+                                                <p className="text-[10px] uppercase font-bold text-gray-400 mb-1 tracking-wider">Input Type</p>
+                                                <CustomDropdown
+                                                    options={[
+                                                        { label: 'Short Answer', value: 'text' },
+                                                        { label: 'Number', value: 'number' },
+                                                        { label: 'Email', value: 'email' },
+                                                        { label: 'Link (URL)', value: 'url' },
+                                                        { label: 'Dropdown Menu', value: 'dropdown' },
+                                                        { label: 'Multiple Choice', value: 'radio' },
+                                                        { label: 'File Upload', value: 'file' }
+                                                    ]}
+                                                    value={field.type}
+                                                    onChange={val => updateFormField(index, 'type', val)}
                                                 />
-                                                Required
-                                            </label>
-                                            <button type="button" onClick={() => removeFormField(index)} className="text-red-500 font-bold px-2 text-xl">&times;</button>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 pt-5">
+                                                <label className="flex items-center gap-2 cursor-pointer group/req">
+                                                    <div
+                                                        onClick={() => updateFormField(index, 'required', !field.required)}
+                                                        className={`w-10 h-5 rounded-full relative transition-colors ${field.required ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                                    >
+                                                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${field.required ? 'left-5.5' : 'left-0.5'}`} style={{ left: field.required ? '22px' : '2px' }}></div>
+                                                    </div>
+                                                    <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Required</span>
+                                                </label>
+                                            </div>
                                         </div>
 
                                         {/* Options for Dropdown/Radio */}
                                         {(field.type === 'dropdown' || field.type === 'radio') && (
-                                            <div className="ml-4 mt-2">
-                                                <label className="text-xs text-gray-500 font-bold uppercase">Options</label>
+                                            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-[10px] border border-gray-100 dark:border-gray-800">
+                                                <p className="text-[10px] uppercase font-bold text-gray-400 mb-2 tracking-wider">Answer Options (comma separated)</p>
                                                 <input
                                                     type="text"
                                                     placeholder="Option 1, Option 2, Option 3..."
-                                                    className="w-full p-2 border-b border-gray-300 focus:border-blue-500 outline-none text-sm dark:bg-transparent dark:text-white"
+                                                    className="w-full p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-[8px] text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
                                                     value={field.options ? field.options.join(', ') : ''}
                                                     onChange={e => updateFieldOptions(index, e.target.value)}
                                                 />
@@ -516,61 +516,68 @@ const AdminDashboard = () => {
 
                                         {/* File Validation Options */}
                                         {field.type === 'file' && (
-                                            <div className="ml-4 mt-2 p-3 bg-white dark:bg-gray-800 rounded border border-dashed border-gray-300">
-                                                <label className="block text-xs text-gray-500 font-bold uppercase mb-2">File Upload Rules</label>
-                                                <div className="flex gap-4 mb-2 flex-wrap">
+                                            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-[10px] border border-gray-100 dark:border-gray-800">
+                                                <p className="text-[10px] uppercase font-bold text-gray-400 mb-3 tracking-wider">File Upload Settings</p>
+                                                <div className="flex gap-6 mb-4">
                                                     {[
-                                                        { label: 'PDF', types: ['application/pdf'] },
-                                                        { label: 'Word Doc', types: ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'] },
-                                                        { label: 'Image', types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] }
+                                                        { label: 'PDF', types: ['application/pdf'], icon: <Globe size={14} /> },
+                                                        { label: 'Word', types: ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], icon: <List size={14} /> },
+                                                        { label: 'Images', types: ['image/jpeg', 'image/png'], icon: <PlusCircle size={14} /> }
                                                     ].map(group => {
                                                         const isChecked = group.types.some(t => field.fileValidation?.allowedTypes?.includes(t));
                                                         return (
-                                                            <label key={group.label} className="flex items-center gap-1 text-xs cursor-pointer">
-                                                                <input type="checkbox"
-                                                                    checked={isChecked}
-                                                                    onChange={(e) => {
-                                                                        const currentTypes = field.fileValidation?.allowedTypes || [];
-                                                                        let newTypes;
-                                                                        if (e.target.checked) {
-                                                                            // Add all types for this group
-                                                                            newTypes = [...new Set([...currentTypes, ...group.types])];
-                                                                        } else {
-                                                                            // Remove all types for this group
-                                                                            newTypes = currentTypes.filter(t => !group.types.includes(t));
-                                                                        }
-                                                                        updateFileValidation(index, 'allowedTypes', newTypes);
-                                                                    }}
-                                                                />
+                                                            <button
+                                                                key={group.label}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const currentTypes = field.fileValidation?.allowedTypes || [];
+                                                                    let newTypes = isChecked
+                                                                        ? currentTypes.filter(t => !group.types.includes(t))
+                                                                        : [...new Set([...currentTypes, ...group.types])];
+                                                                    updateFileValidation(index, 'allowedTypes', newTypes);
+                                                                }}
+                                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all
+                                                                    ${isChecked ? 'bg-blue-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-500 border border-gray-200 dark:border-gray-700'}
+                                                                `}
+                                                            >
+                                                                {isChecked && <CheckCircle2 size={12} />}
                                                                 {group.label}
-                                                            </label>
+                                                            </button>
                                                         )
                                                     })}
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-bold">Max Size:</span>
-                                                    <select className="border rounded text-xs p-1"
-                                                        value={field.fileValidation?.maxSizeInMB || 10}
-                                                        onChange={e => updateFileValidation(index, 'maxSizeInMB', parseInt(e.target.value))}
-                                                    >
-                                                        <option value={1}>1 MB</option>
-                                                        <option value={5}>5 MB</option>
-                                                        <option value={10}>10 MB</option>
-                                                        <option value={100}>100 MB</option>
-                                                        <option value={1024}>1 GB</option>
-                                                    </select>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Max File Size</span>
+                                                    <div className="w-32">
+                                                        <CustomDropdown
+                                                            options={[
+                                                                { label: '1 MB', value: 1 },
+                                                                { label: '5 MB', value: 5 },
+                                                                { label: '10 MB', value: 10 },
+                                                                { label: '100 MB', value: 100 },
+                                                                { label: '1 GB', value: 1024 }
+                                                            ]}
+                                                            value={field.fileValidation?.maxSizeInMB || 10}
+                                                            onChange={val => updateFileValidation(index, 'maxSizeInMB', val)}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
                                 ))}
-                                <button type="button" onClick={addFormField} className="text-sm bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded">
-                                    + Add Form Field
+                                <button
+                                    type="button"
+                                    onClick={addFormField}
+                                    className="w-full py-4 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-[15px] flex items-center justify-center gap-2 text-gray-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all font-medium"
+                                >
+                                    <PlusCircle size={20} />
+                                    Add Question / Form Field
                                 </button>
                             </div>
                         </div>
 
-                        <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700">Post Notice</button>
+                        <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 w-full mb-12">Post Notice</button>
                     </form>
 
                     <div className="mt-12 border-t pt-8 dark:border-gray-700">
@@ -610,66 +617,59 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                 </div>
-            )
-            }
+            )}
 
-            {
-                activeTab === 'registrations' && (
-                    <div>
-                        <div className="mb-6 flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded shadow">
-                            <div className="flex items-center gap-4">
-                                <label className="font-bold">Select Event:</label>
-                                <select
-                                    className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+            {activeTab === 'registrations' && (
+                <div>
+                    <div className="mb-6 flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded shadow">
+                        <div className="flex items-center gap-4">
+                            <label className="font-bold">Select Event:</label>
+                            <div className="w-64">
+                                <CustomDropdown
+                                    options={[
+                                        { label: '-- All Registrations --', value: '' },
+                                        ...notices.map(n => ({ label: n.title.replace(/<[^>]+>/g, ''), value: n._id }))
+                                    ]}
                                     value={selectedNoticeId}
-                                    onChange={e => setSelectedNoticeId(e.target.value)}
-                                >
-                                    <option value="">-- All Registrations --</option>
-                                    {notices.map(n => (
-                                        <option key={n._id} value={n._id}>{n.title}</option>
-                                    ))}
-                                </select>
+                                    onChange={val => setSelectedNoticeId(val)}
+                                />
                             </div>
-                            <button onClick={downloadExcel} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                                Download Excel
-                            </button>
                         </div>
-
-                        <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded shadow">
-                            <table className="min-w-full text-left">
-                                <thead className="bg-gray-100 dark:bg-gray-700">
-                                    <tr>
-                                        {getColumns().map((col, i) => (
-                                            <th key={i} className="p-4 border-b dark:border-gray-600">{col}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {registrations.map(reg => {
-                                        const cols = getColumns();
-                                        return (
-                                            <tr key={reg._id} className="border-t border-gray-200 dark:border-gray-700">
-                                                {cols.map((col, i) => {
-                                                    if (col === 'Date') return <td key={i} className="p-4">{new Date(reg.createdAt).toLocaleDateString()}</td>;
-                                                    // Check if it's a known generic field just in case
-                                                    if (col === 'Event') return <td key={i} className="p-4">{reg.event}</td>;
-
-                                                    // Dynamic fields from details
-                                                    // Note: reg.details is where we store custom bits
-                                                    const val = reg.details?.[col] || (reg[col.toLowerCase()] /* fallback for legacy name/email if label matches */) || '-';
-                                                    return <td key={i} className="p-4">{val}</td>;
-                                                })}
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                            {registrations.length === 0 && <p className="p-4 text-center text-gray-500">No registrations found.</p>}
-                        </div>
+                        <button onClick={downloadExcel} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                            Download Excel
+                        </button>
                     </div>
-                )
-            }
-        </div >
+
+                    <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded shadow">
+                        <table className="min-w-full text-left">
+                            <thead className="bg-gray-100 dark:bg-gray-700">
+                                <tr>
+                                    {getColumns().map((col, i) => (
+                                        <th key={i} className="p-4 border-b dark:border-gray-600">{col}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {registrations.map(reg => {
+                                    const cols = getColumns();
+                                    return (
+                                        <tr key={reg._id} className="border-t border-gray-200 dark:border-gray-700">
+                                            {cols.map((col, i) => {
+                                                if (col === 'Date') return <td key={i} className="p-4">{new Date(reg.createdAt).toLocaleDateString()}</td>;
+                                                if (col === 'Event') return <td key={i} className="p-4">{reg.event}</td>;
+                                                const val = reg.details?.[col] || reg[col.toLowerCase()] || '-';
+                                                return <td key={i} className="p-4">{val}</td>;
+                                            })}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        {registrations.length === 0 && <p className="p-4 text-center text-gray-500">No registrations found.</p>}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 

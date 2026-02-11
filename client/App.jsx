@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { DarkModeProvider } from './contexts/DarkModeContext';
 import Header from './components/Header';
 import Footer from './components/Footer';
+import { ToastProvider } from './contexts/ToastContext';
+import { ToastContainer } from './components/Toast';
 import Home from './pages/Home';
 import AboutPage from './pages/AboutPage';
 import Gallery from './pages/Gallery';
@@ -11,6 +13,7 @@ import Careers from './pages/Careers';
 import ContactPage from './pages/ContactPage';
 
 import AdminLogin from './pages/AdminLogin';
+import AdminRegister from './pages/AdminRegister';
 import AdminDashboard from './pages/AdminDashboard';
 
 function ScrollToTop() {
@@ -25,11 +28,12 @@ function ScrollToTop() {
 
 const AppContent = () => {
     const location = useLocation();
-    const isAdmin = location.pathname.startsWith('/admin');
+    const isAdmin = location.pathname.toLowerCase().startsWith('/admin');
 
     return (
         <div className="min-h-screen bg-white dark:bg-gray-900 transition-colors duration-300">
-            {!isAdmin && <Header />}
+            <ToastContainer />
+            <Header />
             <ScrollToTop />
             <main className="transition-opacity duration-300 ease-in-out">
                 <Routes>
@@ -39,10 +43,11 @@ const AppContent = () => {
                     <Route path="/careers" element={<Careers />} />
                     <Route path="/contact" element={<ContactPage />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
-                    <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                    <Route path="/admin/register" element={<AdminRegister />} />
+                    <Route path="/admin" element={<AdminDashboard />} />
                 </Routes>
             </main>
-            {!isAdmin && <Footer />}
+            <Footer />
         </div>
     );
 };
@@ -50,9 +55,11 @@ const AppContent = () => {
 const App = () => {
     return (
         <DarkModeProvider>
-            <Router>
-                <AppContent />
-            </Router>
+            <ToastProvider>
+                <Router>
+                    <AppContent />
+                </Router>
+            </ToastProvider>
         </DarkModeProvider>
     );
 };

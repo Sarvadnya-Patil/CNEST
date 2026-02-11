@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const NoticeSchema = new mongoose.Schema({
     title: { type: String, required: true },
     content: { type: String, required: true },
+    shortDescription: { type: String }, // Optional short teaser for the notice card
     formTitle: { type: String }, // Explicit title for the form modal (different from event title)
     formDescription: { type: String }, // Detailed instructions for the form modal
     date: { type: Date, default: Date.now },
