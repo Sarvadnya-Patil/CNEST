@@ -15,6 +15,7 @@ import ContactPage from './pages/ContactPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminRegister from './pages/AdminRegister';
 import AdminDashboard from './pages/AdminDashboard';
+import RegistrationPage from './pages/RegistrationPage';
 
 function ScrollToTop() {
     const { pathname } = useLocation();
@@ -45,6 +46,7 @@ const AppContent = () => {
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin/register" element={<AdminRegister />} />
                     <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="/register/:noticeId" element={<RegistrationPage />} />
                 </Routes>
             </main>
             <Footer />

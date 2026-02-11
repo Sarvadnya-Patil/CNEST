@@ -4,7 +4,7 @@ import CustomEditor from '../components/CustomEditor';
 import CustomDropdown from '../components/CustomDropdown';
 import CustomFileInput from '../components/CustomFileInput';
 import { useToast } from '../contexts/ToastContext';
-import { PlusCircle, Trash2, Mail, User, Phone, Globe, Hash, List, FileUp, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { PlusCircle, Trash2, Mail, User, Phone, Globe, Hash, List, FileUp, CheckCircle2, ChevronDown, ChevronUp, Link as LinkIcon, Copy } from 'lucide-react';
 
 const AdminDashboard = () => {
     const [notices, setNotices] = useState([]);
@@ -263,6 +263,13 @@ const AdminDashboard = () => {
     const logout = () => {
         localStorage.removeItem('adminToken');
         navigate('/admin/login');
+    };
+
+    const copyRegistrationLink = (id) => {
+        const url = `${window.location.origin}/register/${id}`;
+        navigator.clipboard.writeText(url)
+            .then(() => addToast("Link copied to clipboard!", "success"))
+            .catch(() => addToast("Failed to copy link", "error"));
     };
 
     // Helper to get columns for the selected event
@@ -594,6 +601,18 @@ const AdminDashboard = () => {
                                         <span className="text-sm text-gray-500">{new Date(notice.date).toLocaleDateString()}</span>
                                     </div>
                                     <div className="flex flex-col gap-2 items-end">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className="text-[10px] bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-500 font-mono truncate max-w-[150px]">
+                                                {window.location.origin}/register/{notice._id}
+                                            </div>
+                                            <button
+                                                onClick={() => copyRegistrationLink(notice._id)}
+                                                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors text-blue-600"
+                                                title="Copy direct link"
+                                            >
+                                                <Copy size={14} />
+                                            </button>
+                                        </div>
                                         <label className="flex items-center cursor-pointer">
                                             <div className="relative">
                                                 <input type="checkbox" className="sr-only" checked={notice.acceptingResponses !== false} onChange={() => handleToggleNoticeStatus(notice)} />

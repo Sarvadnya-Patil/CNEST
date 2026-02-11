@@ -1,18 +1,19 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { ChevronDown, ChevronUp, AlignLeft, AlignRight, Crop } from 'lucide-react';
+import { ChevronDown, ChevronUp, AlignLeft, AlignRight, AlignCenter, Crop } from 'lucide-react';
 import ImageCropper from './ImageCropper';
 import CustomPromptModal from './CustomPromptModal';
 import { useToast } from '../contexts/ToastContext';
 
-// Import image resize module
-import ImageResize from 'quill-image-resize-module-react';
-
 // Fix for quill-image-resize-module which expects window.Quill
-if (typeof window !== 'undefined' && !window.Quill) {
+// WE MUST DO THIS BEFORE IMPORTING ImageResize
+if (typeof window !== 'undefined') {
     window.Quill = Quill;
 }
+
+// Import image resize module
+import ImageResize from 'quill-image-resize-module-react';
 
 // Register ImageResize module
 if (!Quill.imports['modules/imageResize']) {
@@ -91,138 +92,160 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
     const [showShortDescription, setShowShortDescription] = useState(false);
     const [cropImageSrc, setCropImageSrc] = useState(null);
     const [cropTargetIndex, setCropTargetIndex] = useState(null);
-    const [selectionInfo, setSelectionInfo] = useState({ section: null, type: null }); // { section: 'title'|'shortDescription'|'content'|'regular', type: 'IMG'|'IFRAME' }
+    const [selectionInfo, setSelectionInfo] = useState({ section: null, type: null });
+    const selectionInfoRef = useRef(selectionInfo);
+    useEffect(() => { selectionInfoRef.current = selectionInfo; }, [selectionInfo]);
+
+    const activeMediaRef = useRef(null); // { node, index, section }
     const [isIframeModalOpen, setIsIframeModalOpen] = useState(false);
     const { addToast } = useToast();
 
-    // Listen for selection changes for all editor instances
-    useEffect(() => {
-        const createHandler = (sectionName, ref) => (range) => {
-            const quill = ref.current?.getEditor();
-            if (range && quill) {
-                // 1. Try native Quill format check first (reliable for selections)
-                const formats = quill.getFormat(range);
-                let detectedType = null;
-
-                if (formats.image) detectedType = 'IMG';
-                else if (formats.video) detectedType = 'IFRAME';
-
-                // 2. Fallback to indexing check (reliable for clicks/single index)
-                if (!detectedType) {
-                    let targetIndex = range.index;
-                    let [leaf] = quill.getLeaf(targetIndex);
-
-                    if (!(leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'IFRAME'))) {
-                        if (targetIndex > 0) {
-                            [leaf] = quill.getLeaf(targetIndex - 1);
-                        }
-                    }
-
-                    if (leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'IFRAME')) {
-                        detectedType = leaf.domNode.tagName;
-                    }
-                }
-
-                if (detectedType) {
-                    setSelectionInfo({ section: sectionName, type: detectedType });
-                } else {
-                    setSelectionInfo(prev => prev.section === sectionName ? { section: null, type: null } : prev);
-                }
-            } else {
-                setSelectionInfo(prev => prev.section === sectionName ? { section: null, type: null } : prev);
+    // Helper function to focus editor when clicking container
+    const handleContainerClick = (ref) => {
+        const quill = ref.current?.getEditor();
+        if (quill) {
+            try {
+                quill.focus();
+            } catch (e) {
+                console.warn("Quill focus failed:", e);
             }
-        };
+        }
+    };
 
+    // -------------------------------------------------------------------------
+    // 1. Selection & Visibility Logic - SIMPLIFIED
+    // -------------------------------------------------------------------------
+    useEffect(() => {
         const editors = segmented
             ? { title: titleQuillRef, shortDescription: shortDescQuillRef, content: contentQuillRef }
             : { regular: regularQuillRef };
 
-        const cleanupFns = Object.entries(editors).map(([name, ref]) => {
+        const cleanupFns = [];
+
+        Object.entries(editors).forEach(([name, ref]) => {
             const quill = ref.current?.getEditor();
-            if (!quill) return null;
-            const handler = createHandler(name, ref);
-            quill.on('selection-change', handler);
-            return () => quill.off('selection-change', handler);
-        }).filter(Boolean);
+            if (!quill) return;
+
+            // Simple click handler - the ONLY source of truth for media selection
+            const handleClick = (e) => {
+                const target = e.target;
+
+                // Clicked on media
+                if (target.tagName === 'IMG' || target.tagName === 'IFRAME') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const blot = Quill.find(target);
+                    if (!blot) return;
+
+                    const offset = quill.getIndex(blot);
+                    activeMediaRef.current = {
+                        node: target,
+                        index: offset,
+                        section: name
+                    };
+                    // Keep selection stable, only update if needed
+                    if (selectionInfoRef.current.section !== name || selectionInfoRef.current.type !== target.tagName) {
+                        setSelectionInfo({ section: name, type: target.tagName });
+                    }
+                    return;
+                }
+
+                // Clicked on media options - do nothing
+                if (target.closest('.media-options-container')) {
+                    e.stopPropagation();
+                    return;
+                }
+
+                // Clicked elsewhere in editor - clear selection
+                setSelectionInfo({ section: null, type: null });
+                activeMediaRef.current = null;
+            };
+
+            const root = quill.root;
+            root.addEventListener('click', handleClick, true); // Use capture phase
+            cleanupFns.push(() => root.removeEventListener('click', handleClick, true));
+        });
+
+        // Global click to clear when clicking outside
+        const handleGlobalClick = (e) => {
+            if (!e.target.closest('.ql-editor') &&
+                !e.target.closest('.media-options-container')) {
+                setSelectionInfo({ section: null, type: null });
+                activeMediaRef.current = null;
+            }
+        };
+
+        document.addEventListener('click', handleGlobalClick);
+        cleanupFns.push(() => document.removeEventListener('click', handleGlobalClick));
 
         return () => cleanupFns.forEach(fn => fn());
-    }, [segmented, showShortDescription]); // Re-run when sections appear/disappear
+    }, [segmented, showShortDescription]);
 
-    // Custom handler for image/iframe floating
-    // Custom handler for image/iframe floating
+    // -------------------------------------------------------------------------
+    // 2. Media Handlers (Float, Crop, Iframe) - SIMPLIFIED
+    // -------------------------------------------------------------------------
     const handleImageFloat = (direction) => {
-        const section = selectionInfo.section;
-        const ref = section === 'title' ? titleQuillRef
-            : section === 'shortDescription' ? shortDescQuillRef
-                : section === 'content' ? contentQuillRef
+        const target = activeMediaRef.current;
+
+        if (!target || !target.node) {
+            addToast("Please click on an image or video first", "warning");
+            return;
+        }
+
+        const ref = target.section === 'title' ? titleQuillRef
+            : target.section === 'shortDescription' ? shortDescQuillRef
+                : target.section === 'content' ? contentQuillRef
                     : regularQuillRef;
 
         const quill = ref.current?.getEditor();
         if (!quill) return;
 
-        const range = quill.getSelection();
-        if (!range) return;
+        const node = target.node;
 
-        // Standard detection logic
-        const currentFormats = quill.getFormat(range);
-        let [leaf] = quill.getLeaf(range.index);
+        // Get current dimensions
+        const width = node.style.width || node.getAttribute('width') || '';
+        const height = node.style.height || node.getAttribute('height') || '';
+        const cleanWidth = width.replace(/!important/g, '').trim();
+        const cleanHeight = height.replace(/!important/g, '').trim();
 
-        if (!(leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'IFRAME'))) {
-            if (range.index > 0) [leaf] = quill.getLeaf(range.index - 1);
+        // Build size preservation
+        let sizeStr = '';
+        if (cleanWidth) sizeStr += `width: ${cleanWidth} !important; `;
+        if (cleanHeight) sizeStr += `height: ${cleanHeight} !important; `;
+
+        // Build alignment styles
+        let styleStr = '';
+        if (direction === 'left') {
+            styleStr = `float: left !important; margin: 0 15px 10px 0 !important; display: inline-block !important; ${sizeStr}`;
+        } else if (direction === 'right') {
+            styleStr = `float: right !important; margin: 0 0 10px 15px !important; display: inline-block !important; ${sizeStr}`;
+        } else { // center
+            styleStr = `float: none !important; margin: 20px auto !important; display: block !important; ${sizeStr}`;
         }
 
-        if ((currentFormats.image || currentFormats.video) || (leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'IFRAME'))) {
-            const node = (leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'IFRAME'))
-                ? leaf.domNode
-                : quill.container.querySelector('img:focus, iframe:focus'); // Fallback to focused node
+        // Apply to DOM immediately
+        node.setAttribute('style', styleStr);
 
-            if (node) {
-                if (direction === 'left') {
-                    node.style.float = 'left';
-                    node.style.marginRight = '15px';
-                    node.style.marginBottom = '10px';
-                    node.setAttribute('style', `float: left; margin-right: 15px; margin-bottom: 10px; ${node.style.width ? 'width: ' + node.style.width + ';' : ''} ${node.style.height ? 'height: ' + node.style.height + ';' : ''}`);
-                } else if (direction === 'right') {
-                    node.style.float = 'right';
-                    node.style.marginLeft = '15px';
-                    node.style.marginBottom = '10px';
-                    node.setAttribute('style', `float: right; margin-left: 15px; margin-bottom: 10px; ${node.style.width ? 'width: ' + node.style.width + ';' : ''} ${node.style.height ? 'height: ' + node.style.height + ';' : ''}`);
-                } else { // None/Center (breaks default float)
-                    node.style.float = 'none';
-                    node.style.margin = '0 auto';
-                    node.setAttribute('style', `float: none; margin: 0 auto; display: block; ${node.style.width ? 'width: ' + node.style.width + ';' : ''} ${node.style.height ? 'height: ' + node.style.height + ';' : ''}`);
-                }
-
-                // Sync with Quill and trigger change
-                quill.updateContents([{
-                    retain: range.index,
-                    attributes: { style: node.getAttribute('style') || '' }
-                }]);
-
-                // Force a re-registration of the change
-                const currentHTML = quill.root.innerHTML;
-                if (segmented) {
-                    handleSegmentedChange(section, currentHTML);
-                } else {
-                    onChange(currentHTML);
-                }
+        // Manually trigger Quill's change detection
+        setTimeout(() => {
+            const html = quill.root.innerHTML;
+            if (segmented) {
+                handleSegmentedChange(target.section, html);
+            } else {
+                onChange(html);
             }
-        }
+        }, 50);
+
+        addToast(`Aligned ${direction}`, "success");
     };
 
     const handleIframeInsert = () => {
-        // Find which editor to insert into (default to 'content' if segmented, or 'regular')
-        let targetSection = 'regular';
-        if (segmented) {
-            // Logic to determine which editor is currently focused or active
-            // For simplicity, we choose the one that last had a selection or 'content'
-            targetSection = selectionInfo.section || 'content';
-        }
-        setIsIframeModalOpen(targetSection);
+        const currentSelection = selectionInfoRef.current;
+        setIsIframeModalOpen(segmented ? (currentSelection.section || 'content') : 'regular');
     };
 
     const onIframeModalSubmit = (url) => {
-        const section = isIframeModalOpen; // We stored the section name in the state
+        const section = isIframeModalOpen;
         const ref = section === 'title' ? titleQuillRef
             : section === 'shortDescription' ? shortDescQuillRef
                 : section === 'content' ? contentQuillRef
@@ -232,62 +255,11 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         if (!quill || !url) return;
 
         const range = quill.getSelection(true);
+        if (!range) return;
+
         quill.insertEmbed(range.index, 'video', url);
         quill.setSelection(range.index + 1);
         addToast("Video embedded successfully!", "success");
-    };
-
-    // Reusable Media Controls Component
-    const MediaOptions = ({ section }) => {
-        if (selectionInfo.section !== section) return null;
-
-        return (
-            <div className="flex gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                {selectionInfo.type === 'IMG' && (
-                    <button
-                        type="button"
-                        onClick={handleCropClick}
-                        className="text-[10px] px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex items-center gap-1 font-bold border border-blue-200 dark:border-blue-700 shadow-sm"
-                        title="Crop selected image"
-                    >
-                        <Crop size={12} />
-                        Crop
-                    </button>
-                )}
-                <button
-                    type="button"
-                    onClick={() => handleImageFloat('left')}
-                    className="text-[10px] px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 transition-colors flex items-center gap-1 font-bold border border-green-200 dark:border-green-700 shadow-sm"
-                    title="Float media left"
-                >
-                    <AlignLeft size={12} />
-                    Float Left
-                </button>
-                <button
-                    type="button"
-                    onClick={() => handleImageFloat('right')}
-                    className="text-[10px] px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 transition-colors flex items-center gap-1 font-bold border border-green-200 dark:border-green-700 shadow-sm"
-                    title="Float media right"
-                >
-                    <AlignRight size={12} />
-                    Float Right
-                </button>
-                <button
-                    type="button"
-                    onClick={() => handleImageFloat('none')}
-                    className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex items-center gap-1 font-bold border border-gray-200 dark:border-gray-600 shadow-sm"
-                    title="Clear alignment"
-                >
-                    Reset
-                </button>
-            </div>
-        );
-    };
-
-    const handleContainerClick = (ref) => {
-        if (ref.current) {
-            ref.current.focus();
-        }
     };
 
     const handleCropClick = () => {
@@ -301,32 +273,38 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         if (!quill) return;
 
         const range = quill.getSelection();
+        if (!range && !activeMediaRef.current) {
+            addToast("Please click on an image first", "warning");
+            return;
+        }
         if (!range) {
             addToast("Please select an image first to crop.", "warning");
             return;
         }
-
-        // Standard detection logic
         const currentFormats = quill.getFormat(range);
-        let targetIndex = range.index;
-        let [leaf] = quill.getLeaf(targetIndex);
+        let imgNode = null;
+        let targetBlotIndex = range.index;
 
-        if (!(leaf && leaf.domNode && leaf.domNode.tagName === 'IMG')) {
-            if (targetIndex > 0) [leaf] = quill.getLeaf(targetIndex - 1);
+        // 1. Try to find leaf at current, previous, or next index
+        const checkIndices = [range.index, range.index - 1, range.index + 1];
+        for (const idx of checkIndices) {
+            if (idx < 0 || idx > quill.getLength()) continue;
+            const [leaf] = quill.getLeaf(idx);
+            if (leaf && leaf.domNode && leaf.domNode.tagName === 'IMG') {
+                imgNode = leaf.domNode;
+                targetBlotIndex = quill.getIndex(leaf);
+                break;
+            }
         }
 
-        if (currentFormats.image || (leaf && leaf.domNode && leaf.domNode.tagName === 'IMG')) {
-            const imgNode = (leaf && leaf.domNode && leaf.domNode.tagName === 'IMG')
-                ? leaf.domNode
-                : quill.container.querySelector('img:focus');
+        // 2. Fallback to format check
+        if (!imgNode && currentFormats.image) {
+            imgNode = quill.container.querySelector('img:focus');
+        }
 
-            if (imgNode) {
-                setCropImageSrc(imgNode.src);
-                const blotIndex = quill.getIndex(leaf) !== -1 ? quill.getIndex(leaf) : targetIndex;
-                setCropTargetIndex(blotIndex);
-            } else {
-                addToast("Could not identify the image to crop.", "error");
-            }
+        if (imgNode) {
+            setCropImageSrc(imgNode.src);
+            setCropTargetIndex(targetBlotIndex !== -1 ? targetBlotIndex : range.index);
         } else {
             addToast("Please select an image first to crop.", "warning");
         }
@@ -342,15 +320,12 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         const quill = ref.current?.getEditor();
         if (!quill || cropTargetIndex === null) return;
 
-        // Try to find the existing image style to preserve it (e.g. float)
         let existingStyle = '';
         const [leaf] = quill.getLeaf(cropTargetIndex);
         if (leaf && leaf.domNode && leaf.domNode.tagName === 'IMG') {
             existingStyle = leaf.domNode.getAttribute('style') || '';
         }
 
-        // Delete old image and insert new one
-        // We use a small delay or a single transaction to prevent duplicates
         quill.updateContents({
             ops: [
                 { retain: cropTargetIndex },
@@ -359,12 +334,67 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
             ]
         }, 'user');
 
-        // Restore selection
         quill.setSelection(cropTargetIndex + 1);
         setCropImageSrc(null);
         setCropTargetIndex(null);
         addToast("Image cropped successfully!", "success");
     };
+
+    // -------------------------------------------------------------------------
+    // 3. UI Components & Configuration
+    // -------------------------------------------------------------------------
+    const MediaOptions = ({ section }) => {
+        // Show if explicitly selected
+        if (selectionInfo.section !== section) return null;
+
+        return (
+            <div className="flex gap-2 animate-in fade-in slide-in-from-top-1 duration-200 media-options-container">
+                {selectionInfo.type === 'IMG' && (
+                    <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleCropClick}
+                        className="text-[10px] px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex items-center gap-1 font-bold border border-blue-200 dark:border-blue-700 shadow-sm"
+                        title="Crop selected image"
+                    >
+                        <Crop size={12} />
+                        Crop
+                    </button>
+                )}
+                <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleImageFloat('left')}
+                    className="text-[10px] px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 transition-colors flex items-center gap-1 font-bold border border-green-200 dark:border-green-700 shadow-sm"
+                    title="Float media left"
+                >
+                    <AlignLeft size={12} />
+                    Float Left
+                </button>
+                <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleImageFloat('right')}
+                    className="text-[10px] px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 transition-colors flex items-center gap-1 font-bold border border-green-200 dark:border-green-700 shadow-sm"
+                    title="Float media right"
+                >
+                    <AlignRight size={12} />
+                    Float Right
+                </button>
+                <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleImageFloat('center')}
+                    className="text-[10px] px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1 font-bold border border-gray-200 dark:border-gray-600 shadow-sm"
+                    title="Center media"
+                >
+                    <AlignCenter size={12} />
+                    Center
+                </button>
+            </div>
+        );
+    };
+
 
     const modules = useMemo(() => ({
         toolbar: {
@@ -386,10 +416,10 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
             }
         },
         imageResize: {
-            modules: ['Resize', 'DisplaySize', 'Toolbar'],
+            modules: ['Resize', 'DisplaySize'], // Removed 'Toolbar' to avoid conflict
             tagName: ['img', 'iframe']
         }
-    }), []);
+    }), []); // Stable modules
 
     const formats = useMemo(() => [
         'header', 'font', 'size',
@@ -645,10 +675,22 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                     height: auto !important;
                     cursor: pointer;
                     border-radius: 4px;
-                    display: block;
-                    float: left;
-                    margin-right: 15px;
-                    margin-bottom: 10px;
+                    display: inline-block !important;
+                    float: left; /* Default alignment */
+                    margin-right: 15px !important;
+                    margin-bottom: 10px !important;
+                    transition: outline 0.2s;
+                }
+
+                .custom-quill-container .ql-editor img:focus,
+                .custom-quill-container .ql-editor iframe:focus {
+                    box-shadow: 0 0 0 2px #3b82f6 !important;
+                    outline: none !important;
+                }
+
+                .custom-quill-container .ql-editor img::selection,
+                .custom-quill-container .ql-editor iframe::selection {
+                    background: transparent !important;
                 }
                 
                 .custom-quill-container .ql-editor img[style*="float: left"],
@@ -659,8 +701,18 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                 
                 .custom-quill-container .ql-editor img[style*="float: right"],
                 .custom-quill-container .ql-editor iframe[style*="float: right"] {
+                    float: right !important;
                     margin-left: 15px !important;
                     margin-bottom: 10px !important;
+                    margin-right: 0 !important;
+                    display: inline-block !important;
+                }
+
+                .custom-quill-container .ql-editor img[style*="float: none"],
+                .custom-quill-container .ql-editor iframe[style*="float: none"] {
+                    float: none !important;
+                    margin: 20px auto !important;
+                    display: block !important;
                 }
 
                 /* Resize Handles Style */

@@ -81,6 +81,18 @@ router.get('/notices', async (req, res) => {
     }
 });
 
+// Get single notice (Public)
+router.get('/notices/:id', async (req, res) => {
+    try {
+        const notice = await Notice.findById(req.params.id);
+        if (!notice) return res.status(404).json("Notice not found");
+        res.json(notice);
+    } catch (err) {
+        console.error("Error fetching notice:", err);
+        res.status(500).json(err);
+    }
+});
+
 // Create Notice (Protected)
 router.post('/notices', verifyToken, async (req, res) => {
     const newNotice = new Notice(req.body);
