@@ -12,10 +12,16 @@ const CustomPromptModal = ({ isOpen, onClose, onSubmit, title, placeholder, init
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+    const handleSubmit = () => {
         onSubmit(value);
         onClose();
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Prevent accidental form submission if any
+            handleSubmit();
+        }
     };
 
     return (
@@ -33,13 +39,14 @@ const CustomPromptModal = ({ isOpen, onClose, onSubmit, title, placeholder, init
                 </div>
 
                 {/* Body */}
-                <form onSubmit={handleSubmit} className="p-6">
+                <div className="p-6">
                     <div className="mb-6">
                         <input
                             autoFocus
                             type="text"
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             placeholder={placeholder}
                             className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-blue-500 dark:focus:border-blue-500 focus:outline-none transition-all dark:text-white"
                         />
@@ -54,13 +61,14 @@ const CustomPromptModal = ({ isOpen, onClose, onSubmit, title, placeholder, init
                             Cancel
                         </button>
                         <button
-                            type="submit"
+                            type="button"
+                            onClick={handleSubmit}
                             className="px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/30 transition-all transform active:scale-95"
                         >
                             Insert
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     );

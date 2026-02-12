@@ -92,6 +92,7 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
     const [showShortDescription, setShowShortDescription] = useState(false);
     const [cropImageSrc, setCropImageSrc] = useState(null);
     const [cropTargetIndex, setCropTargetIndex] = useState(null);
+    const [cropSection, setCropSection] = useState(null); // Persist section during crop
     const [selectionInfo, setSelectionInfo] = useState({ section: null, type: null });
     const selectionInfoRef = useRef(selectionInfo);
     useEffect(() => { selectionInfoRef.current = selectionInfo; }, [selectionInfo]);
@@ -318,13 +319,14 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         if (imgNode) {
             setCropImageSrc(imgNode.src);
             setCropTargetIndex(targetBlotIndex !== -1 ? targetBlotIndex : range.index);
+            setCropSection(selectionInfo.section); // Persist section
         } else {
             addToast("Please select an image first to crop.", "warning");
         }
     };
 
     const handleCropComplete = (newImageSrc) => {
-        const section = selectionInfo.section;
+        const section = cropSection; // Use persisted section
         const ref = section === 'title' ? titleQuillRef
             : section === 'shortDescription' ? shortDescQuillRef
                 : section === 'content' ? contentQuillRef
@@ -350,6 +352,7 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         quill.setSelection(cropTargetIndex + 1);
         setCropImageSrc(null);
         setCropTargetIndex(null);
+        setCropSection(null);
         addToast("Image cropped successfully!", "success");
     };
 
@@ -633,6 +636,7 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                     onCancel={() => {
                         setCropImageSrc(null);
                         setCropTargetIndex(null);
+                        setCropSection(null);
                     }}
                 />
             )}
