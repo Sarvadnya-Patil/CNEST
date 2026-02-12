@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { ChevronDown, ChevronUp, AlignLeft, AlignRight, AlignCenter, Crop } from 'lucide-react';
+import { ChevronDown, ChevronUp, AlignLeft, AlignRight, AlignCenter, Crop, Maximize } from 'lucide-react';
 import ImageCropper from './ImageCropper';
 import CustomPromptModal from './CustomPromptModal';
 import { useToast } from '../contexts/ToastContext';
@@ -98,6 +98,8 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
 
     const activeMediaRef = useRef(null); // { node, index, section }
     const [isIframeModalOpen, setIsIframeModalOpen] = useState(false);
+    // isResizingRef tracks if we are in "resize mode" to allow event propagation
+    const isResizingRef = useRef(false);
     const { addToast } = useToast();
 
     // Helper function to focus editor when clicking container
@@ -132,8 +134,17 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
 
                 // Clicked on media
                 if (target.tagName === 'IMG' || target.tagName === 'IFRAME') {
-                    e.preventDefault();
-                    e.stopPropagation();
+                    // Check if we are in explicit resize mode
+                    if (isResizingRef.current) {
+                        // Allow propagation so Resize Module can see it
+                        // Reset flag after one successful propagation if desired, 
+                        // or keep it until deselection. Let's keep it for now.
+                    } else {
+                        // Standard mode: block propagation to keep our UI clean
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+
                     const blot = Quill.find(target);
                     if (!blot) return;
 
@@ -159,6 +170,7 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                 // Clicked elsewhere in editor - clear selection
                 setSelectionInfo({ section: null, type: null });
                 activeMediaRef.current = null;
+                isResizingRef.current = false;
             };
 
             const root = quill.root;
@@ -172,6 +184,7 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                 !e.target.closest('.media-options-container')) {
                 setSelectionInfo({ section: null, type: null });
                 activeMediaRef.current = null;
+                isResizingRef.current = false;
             }
         };
 
@@ -340,6 +353,20 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         addToast("Image cropped successfully!", "success");
     };
 
+    const handleResizeClick = () => {
+        const target = activeMediaRef.current;
+        if (!target || !target.node) return;
+
+        // Enable resize mode
+        isResizingRef.current = true;
+
+        // Force a click on the node to wake up the resize module
+        // prompting it to show handles
+        target.node.click();
+
+        addToast("Drag handles to resize. Click away to finish.", "info");
+    };
+
     // -------------------------------------------------------------------------
     // 3. UI Components & Configuration
     // -------------------------------------------------------------------------
@@ -361,6 +388,16 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                         Crop
                     </button>
                 )}
+                <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleResizeClick}
+                    className="text-[10px] px-2 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800 transition-colors flex items-center gap-1 font-bold border border-yellow-200 dark:border-yellow-700 shadow-sm"
+                    title="Resize media"
+                >
+                    <Maximize size={12} />
+                    Resize
+                </button>
                 <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
