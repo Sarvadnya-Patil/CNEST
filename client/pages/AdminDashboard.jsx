@@ -371,7 +371,7 @@ const AdminDashboard = () => {
                                 />
                             </div>
 
-                            <div className="mb-6 p-4 border rounded bg-purple-50 dark:bg-gray-700 border-purple-200">
+                            <div className="mb-6 p-4 border rounded bg-purple-50 dark:bg-gray-700 rounded-3xl border-purple-200">
                                 <h3 className="font-bold mb-3 text-purple-700 dark:text-purple-300">Theme & Design (Google Forms Style)</h3>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div>

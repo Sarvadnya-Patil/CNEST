@@ -131,33 +131,38 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
 
             // Simple click handler - the ONLY source of truth for media selection
             const handleClick = (e) => {
-                const target = e.target;
+                let target = e.target;
+
+                // Support clicking on video containers or overlays
+                const mediaNode = (target.tagName === 'IMG' || target.tagName === 'IFRAME')
+                    ? target
+                    : target.closest('.ql-video')?.querySelector('iframe') || target.querySelector('img, iframe');
 
                 // Clicked on media
-                if (target.tagName === 'IMG' || target.tagName === 'IFRAME') {
+                if (mediaNode) {
+                    const finalTarget = mediaNode;
+
                     // Check if we are in explicit resize mode
                     if (isResizingRef.current) {
                         // Allow propagation so Resize Module can see it
-                        // Reset flag after one successful propagation if desired, 
-                        // or keep it until deselection. Let's keep it for now.
                     } else {
                         // Standard mode: block propagation to keep our UI clean
                         e.preventDefault();
                         e.stopPropagation();
                     }
 
-                    const blot = Quill.find(target);
+                    const blot = Quill.find(finalTarget);
                     if (!blot) return;
 
                     const offset = quill.getIndex(blot);
                     activeMediaRef.current = {
-                        node: target,
+                        node: finalTarget,
                         index: offset,
                         section: name
                     };
                     // Keep selection stable, only update if needed
-                    if (selectionInfoRef.current.section !== name || selectionInfoRef.current.type !== target.tagName) {
-                        setSelectionInfo({ section: name, type: target.tagName });
+                    if (selectionInfoRef.current.section !== name || selectionInfoRef.current.type !== finalTarget.tagName) {
+                        setSelectionInfo({ section: name, type: finalTarget.tagName });
                     }
                     return;
                 }
@@ -258,7 +263,19 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         setIsIframeModalOpen(segmented ? (currentSelection.section || 'content') : 'regular');
     };
 
-    const onIframeModalSubmit = (url) => {
+    const onIframeModalSubmit = (input) => {
+        let url = input;
+
+        // Check if input is an iframe code
+        if (input.trim().startsWith('<iframe')) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(input, 'text/html');
+            const iframe = doc.querySelector('iframe');
+            if (iframe && iframe.src) {
+                url = iframe.src;
+            }
+        }
+
         const section = isIframeModalOpen;
         const ref = section === 'title' ? titleQuillRef
             : section === 'shortDescription' ? shortDescQuillRef
@@ -271,7 +288,17 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
         const range = quill.getSelection(true);
         if (!range) return;
 
+        // Apply default styling: Center + 75% width + 16:9 Aspect Ratio
+        const defaultStyle = "width: 75% !important; aspect-ratio: 16 / 9 !important; float: none !important; margin: 20px auto !important; display: block !important;";
+
         quill.insertEmbed(range.index, 'video', url);
+
+        // Apply styling to the newly inserted iframe
+        const [leaf] = quill.getLeaf(range.index);
+        if (leaf && leaf.domNode) {
+            leaf.domNode.setAttribute('style', defaultStyle);
+        }
+
         quill.setSelection(range.index + 1);
         addToast("Video embedded successfully!", "success");
     };
@@ -646,7 +673,7 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                 onClose={() => setIsIframeModalOpen(false)}
                 onSubmit={onIframeModalSubmit}
                 title="Insert Video/Iframe"
-                placeholder="Enter URL (e.g., https://www.youtube.com/embed/...)"
+                placeholder="Paste full <iframe> code or URL here..."
             />
 
             <style jsx="true">{`
@@ -721,6 +748,28 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                     margin-right: 15px !important;
                     margin-bottom: 10px !important;
                     transition: outline 0.2s;
+                    position: relative;
+                }
+
+                /* Selection shield for iframes to allow one-click formatting */
+                .custom-quill-container .ql-editor .ql-video {
+                    position: relative;
+                    display: inline-block;
+                    cursor: pointer;
+                }
+                
+                .custom-quill-container .ql-editor .ql-video::after {
+                    content: "";
+                    position: absolute;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    z-index: 10;
+                    background: transparent;
+                }
+
+                /* Allow interaction when the element is actually focused/selected */
+                .custom-quill-container .ql-editor .ql-video:focus::after,
+                .custom-quill-container .ql-editor .ql-video[class*="selected"]::after {
+                     display: none;
                 }
 
                 .custom-quill-container .ql-editor img:focus,
