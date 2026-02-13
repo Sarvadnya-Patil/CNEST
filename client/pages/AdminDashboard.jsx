@@ -36,7 +36,7 @@ const AdminDashboard = () => {
 
     const navigate = useNavigate();
     const token = localStorage.getItem('adminToken');
-    const { addToast } = useToast();
+    const { addToast, askConfirm } = useToast();
 
     useEffect(() => {
         if (!token) {
@@ -78,23 +78,16 @@ const AdminDashboard = () => {
         }
     };
 
-    // Generic file upload to server
-    const handleFileUpload = async (file) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-            const res = await fetch('/api/admin/upload', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            const data = await res.json();
-            return data.path; // returns relative path /uploads/filename
-        } catch (err) {
-            console.error(err);
-            return null;
-        }
+    // Helper to convert file to Base64
+    const fileToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = (error) => reject(error);
+        });
     };
+
 
 
     const handleCreateNotice = async (e) => {
@@ -198,7 +191,11 @@ const AdminDashboard = () => {
     };
 
     const handleDeleteNotice = async (id) => {
-        if (!window.confirm("Are you sure?")) return;
+        const confirmed = await askConfirm(
+            "Delete Notice?",
+            "Are you sure you want to delete this notice? This action will remove all registration data associated with it and cannot be undone."
+        );
+        if (!confirmed) return;
         try {
             const res = await fetch(`/api/admin/notices/${id}`, {
                 method: 'DELETE',
@@ -257,10 +254,13 @@ const AdminDashboard = () => {
             a.remove();
         } catch (err) {
             console.error(err);
+            addToast("Failed to download registrations", "error");
         }
     };
 
-    const logout = () => {
+    const logout = async () => {
+        const confirmed = await askConfirm("Logout?", "Are you sure you want to log out of the admin session?");
+        if (!confirmed) return;
         localStorage.removeItem('adminToken');
         navigate('/admin/login');
     };
@@ -324,8 +324,11 @@ const AdminDashboard = () => {
                                     label="Card Background Image"
                                     accept="image/*"
                                     onChange={async (e) => {
-                                        const path = await handleFileUpload(e.target.files[0]);
-                                        if (path) setNewNotice({ ...newNotice, noticeBgImage: path });
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            const base64 = await fileToBase64(file);
+                                            setNewNotice({ ...newNotice, noticeBgImage: base64 });
+                                        }
                                     }}
                                     isUploaded={!!newNotice.noticeBgImage}
                                     previewUrl={newNotice.noticeBgImage}
@@ -363,8 +366,11 @@ const AdminDashboard = () => {
                                     label="Form Header Background Image"
                                     accept="image/*"
                                     onChange={async (e) => {
-                                        const path = await handleFileUpload(e.target.files[0]);
-                                        if (path) setNewNotice({ ...newNotice, formBgImage: path });
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            const base64 = await fileToBase64(file);
+                                            setNewNotice({ ...newNotice, formBgImage: base64 });
+                                        }
                                     }}
                                     isUploaded={!!newNotice.formBgImage}
                                     previewUrl={newNotice.formBgImage}

@@ -46,17 +46,61 @@ const Toast = ({ id, message, type }) => {
     );
 };
 
+export const ConfirmModal = () => {
+    const { confirmData, handleConfirm } = useToast();
+
+    if (!confirmData) return null;
+
+    return (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-gray-100 dark:border-gray-800 overflow-hidden animate-in zoom-in-95 duration-300">
+                <div className="p-8 text-center">
+                    <div className="w-16 h-16 bg-yellow-50 dark:bg-yellow-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <AlertTriangle className="text-yellow-500" size={32} />
+                    </div>
+
+                    <h3 className="text-xl font-extrabold text-gray-900 dark:text-white mb-2">
+                        {confirmData.title || "Are you sure?"}
+                    </h3>
+
+                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-8 px-2">
+                        {confirmData.message || "This action cannot be undone. Please confirm to proceed."}
+                    </p>
+
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => handleConfirm(false)}
+                            className="flex-1 px-6 py-3 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-2xl transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={() => handleConfirm(true)}
+                            className="flex-1 px-6 py-3 text-sm font-bold text-white bg-red-500 hover:bg-red-600 rounded-2xl shadow-lg shadow-red-500/30 transition-all transform active:scale-95"
+                        >
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const ToastContainer = () => {
     const { toasts } = useToast();
 
     return (
-        <div className="fixed top-20 right-4 z-[9999] flex flex-col items-end pointer-events-none">
-            <div className="pointer-events-auto">
-                {toasts.map((toast) => (
-                    <Toast key={toast.id} {...toast} />
-                ))}
+        <>
+            <ConfirmModal />
+            <div className="fixed top-20 right-4 z-[9999] flex flex-col items-end pointer-events-none">
+                <div className="pointer-events-auto">
+                    {toasts.map((toast) => (
+                        <Toast key={toast.id} {...toast} />
+                    ))}
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 

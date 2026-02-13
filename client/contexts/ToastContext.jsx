@@ -12,6 +12,7 @@ export const useToast = () => {
 
 export const ToastProvider = ({ children }) => {
     const [toasts, setToasts] = useState([]);
+    const [confirmData, setConfirmData] = useState(null); // { title, message, resolve }
 
     const addToast = useCallback((message, type = 'info', duration = 3000) => {
         const id = Math.random().toString(36).substr(2, 9);
@@ -26,8 +27,28 @@ export const ToastProvider = ({ children }) => {
         setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
     }, []);
 
+    const askConfirm = useCallback((title, message) => {
+        return new Promise((resolve) => {
+            setConfirmData({ title, message, resolve });
+        });
+    }, []);
+
+    const handleConfirm = useCallback((result) => {
+        if (confirmData?.resolve) {
+            confirmData.resolve(result);
+        }
+        setConfirmData(null);
+    }, [confirmData]);
+
     return (
-        <ToastContext.Provider value={{ addToast, removeToast, toasts }}>
+        <ToastContext.Provider value={{
+            addToast,
+            removeToast,
+            toasts,
+            askConfirm,
+            confirmData,
+            handleConfirm
+        }}>
             {children}
         </ToastContext.Provider>
     );
