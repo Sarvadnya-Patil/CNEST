@@ -686,9 +686,9 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
                 .custom-quill-container {
                     border: 1px solid #e2e8f0;
                     border-radius: 8px;
-                    overflow: hidden;
                     background-color: #fff;
                     transition: border-color 0.2s;
+                    position: relative;
                 }
 
                 .dark .custom-quill-container {
@@ -711,7 +711,6 @@ const CustomEditor = ({ value, onChange, placeholder, className, minHeight = "15
 
                 .segmented-custom-editor {
                     border-radius: 10px;
-                    overflow: hidden;
                     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
                 }
 
